@@ -1,12 +1,16 @@
-use std::net::{TcpListener, TcpStream};
-use std::thread::spawn;
+use std::{
+    net::{TcpListener, TcpStream},
+    thread::spawn,
+};
 
 use log::*;
-use tungstenite::extensions::deflate::{DeflateExt, DeflateConfigBuilder};
-use tungstenite::handshake::HandshakeRole;
-use tungstenite::protocol::WebSocketConfig;
-use tungstenite::server::accept_with_config;
-use tungstenite::{Error, HandshakeError, Message, Result};
+use tungstenite::{
+    extensions::compression::{deflate::DeflateConfigBuilder, WsCompression},
+    handshake::HandshakeRole,
+    protocol::WebSocketConfig,
+    server::accept_with_config,
+    Error, HandshakeError, Message, Result,
+};
 
 fn must_not_block<Role: HandshakeRole>(err: HandshakeError<Role>) -> Error {
     match err {
@@ -16,16 +20,13 @@ fn must_not_block<Role: HandshakeRole>(err: HandshakeError<Role>) -> Error {
 }
 
 fn handle_client(stream: TcpStream) -> Result<()> {
-    let deflate_config = DeflateConfigBuilder::default()
-        .max_message_size(None)
-        .build();
+    let deflate_config = DeflateConfigBuilder::default().max_message_size(None).build();
 
     let mut socket = accept_with_config(
         stream,
         Some(WebSocketConfig {
-            max_send_queue: None,
-            max_frame_size: Some(16 << 20),
-            encoder: DeflateExt::new(deflate_config),
+            compression: WsCompression::Deflate(deflate_config),
+            ..Default::default()
         }),
     )
     .map_err(must_not_block)?;

@@ -1,19 +1,26 @@
 //! Server handshake machine.
 
-use std::io::{self, Read, Write};
-use std::marker::PhantomData;
-use std::result::Result as StdResult;
+use std::{
+    io::{self, Read, Write},
+    marker::PhantomData,
+    result::Result as StdResult,
+};
 
 use http::{HeaderMap, Request as HttpRequest, Response as HttpResponse, StatusCode};
 use httparse::Status;
 use log::*;
 
-use super::headers::{FromHttparse, MAX_HEADERS};
-use super::machine::{HandshakeMachine, StageResult, TryParse};
-use super::{convert_key, HandshakeRole, MidHandshake, ProcessingResult};
-use crate::error::{Error, Result};
-use crate::extensions::WebSocketExtension;
-use crate::protocol::{Role, WebSocket, WebSocketConfig};
+use super::{
+    convert_key,
+    headers::{FromHttparse, MAX_HEADERS},
+    machine::{HandshakeMachine, StageResult, TryParse},
+    HandshakeRole, MidHandshake, ProcessingResult,
+};
+use crate::{
+    error::{Error, Result},
+    extensions::compression::verify_compression_req_headers,
+    protocol::{Role, WebSocket, WebSocketConfig},
+};
 
 /// Server request type.
 pub type Request = HttpRequest<()>;
@@ -31,24 +38,17 @@ pub fn create_response(request: &Request) -> Result<Response> {
     }
 
     if request.version() < http::Version::HTTP_11 {
-        return Err(Error::Protocol(
-            "HTTP version should be 1.1 or higher".into(),
-        ));
+        return Err(Error::Protocol("HTTP version should be 1.1 or higher".into()));
     }
 
     if !request
         .headers()
         .get("Connection")
         .and_then(|h| h.to_str().ok())
-        .map(|h| {
-            h.split(|c| c == ' ' || c == ',')
-                .any(|p| p.eq_ignore_ascii_case("Upgrade"))
-        })
+        .map(|h| h.split(|c| c == ' ' || c == ',').any(|p| p.eq_ignore_ascii_case("Upgrade")))
         .unwrap_or(false)
     {
-        return Err(Error::Protocol(
-            "No \"Connection: upgrade\" in client request".into(),
-        ));
+        return Err(Error::Protocol("No \"Connection: upgrade\" in client request".into()));
     }
 
     if !request
@@ -58,20 +58,11 @@ pub fn create_response(request: &Request) -> Result<Response> {
         .map(|h| h.eq_ignore_ascii_case("websocket"))
         .unwrap_or(false)
     {
-        return Err(Error::Protocol(
-            "No \"Upgrade: websocket\" in client request".into(),
-        ));
+        return Err(Error::Protocol("No \"Upgrade: websocket\" in client request".into()));
     }
 
-    if !request
-        .headers()
-        .get("Sec-WebSocket-Version")
-        .map(|h| h == "13")
-        .unwrap_or(false)
-    {
-        return Err(Error::Protocol(
-            "No \"Sec-WebSocket-Version: 13\" in client request".into(),
-        ));
+    if !request.headers().get("Sec-WebSocket-Version").map(|h| h == "13").unwrap_or(false) {
+        return Err(Error::Protocol("No \"Sec-WebSocket-Version: 13\" in client request".into()));
     }
 
     let key = request
@@ -125,9 +116,7 @@ impl<'h, 'b: 'h> FromHttparse<httparse::Request<'h, 'b>> for Request {
         }
 
         if raw.version.expect("Bug: no HTTP version") < /*1.*/1 {
-            return Err(Error::Protocol(
-                "HTTP version should be 1.1 or higher".into(),
-            ));
+            return Err(Error::Protocol("HTTP version should be 1.1 or higher".into()));
         }
 
         let headers = HeaderMap::from_httparse(raw.headers)?;
@@ -191,84 +180,58 @@ impl Callback for NoCallback {
 /// Server handshake role.
 #[allow(missing_copy_implementations)]
 #[derive(Debug)]
-pub struct ServerHandshake<S, C, Ext>
-where
-    Ext: WebSocketExtension,
-{
+pub struct ServerHandshake<S, C> {
     /// Callback which is called whenever the server read the request from the client and is ready
     /// to reply to it. The callback returns an optional headers which will be added to the reply
     /// which the server sends to the user.
     callback: Option<C>,
     /// WebSocket configuration.
-    config: Option<Option<WebSocketConfig<Ext>>>,
+    config: Option<WebSocketConfig>,
     /// Error code/flag. If set, an error will be returned after sending response to the client.
-    error_code: Option<u16>,
+    error_response: Option<ErrorResponse>,
     /// Internal stream type.
     _marker: PhantomData<S>,
 }
 
-impl<S, C, Ext> ServerHandshake<S, C, Ext>
-where
-    S: Read + Write,
-    C: Callback,
-    Ext: WebSocketExtension,
-{
+impl<S: Read + Write, C: Callback> ServerHandshake<S, C> {
     /// Start server handshake. `callback` specifies a custom callback which the user can pass to
     /// the handshake, this callback will be called when the a websocket client connnects to the
     /// server, you can specify the callback if you want to add additional header to the client
     /// upon join based on the incoming headers.
-    pub fn start(
-        stream: S,
-        callback: C,
-        config: Option<WebSocketConfig<Ext>>,
-    ) -> MidHandshake<Self> {
+    pub fn start(stream: S, callback: C, config: Option<WebSocketConfig>) -> MidHandshake<Self> {
         trace!("Server handshake initiated.");
         MidHandshake {
             machine: HandshakeMachine::start_read(stream),
             role: ServerHandshake {
                 callback: Some(callback),
-                config: Some(config),
-                error_code: None,
+                config,
+                error_response: None,
                 _marker: PhantomData,
             },
         }
     }
 }
 
-impl<S, C, Ext> HandshakeRole for ServerHandshake<S, C, Ext>
-where
-    S: Read + Write,
-    C: Callback,
-    Ext: WebSocketExtension,
-{
+impl<S: Read + Write, C: Callback> HandshakeRole for ServerHandshake<S, C> {
     type IncomingData = Request;
     type InternalStream = S;
-    type FinalResult = WebSocket<S, Ext>;
+    type FinalResult = WebSocket<S>;
 
     fn stage_finished(
         &mut self,
         finish: StageResult<Self::IncomingData, Self::InternalStream>,
     ) -> Result<ProcessingResult<Self::InternalStream, Self::FinalResult>> {
         Ok(match finish {
-            StageResult::DoneReading {
-                stream,
-                result: request,
-                tail,
-            } => {
+            StageResult::DoneReading { stream, result, tail } => {
                 if !tail.is_empty() {
                     return Err(Error::Protocol("Junk after client request".into()));
                 }
 
-                let mut response = create_response(&request)?;
-
-                if let Some(ref mut config) = self.config.as_mut().unwrap() {
-                    if let Err(e) = config.encoder.on_receive_request(&request, &mut response) {
-                        return Err(e.into());
-                    }
-                }
+                let mut response = create_response(&result)?;
+                verify_compression_req_headers(&result, &mut response, &mut self.config)?;
 
                 let callback_result = if let Some(callback) = self.callback.take() {
-                    callback.on_request(&request, response)
+                    callback.on_request(&result, response)
                 } else {
                     Ok(response)
                 };
@@ -287,29 +250,28 @@ where
                             ));
                         }
 
-                        self.error_code = Some(resp.status().as_u16());
+                        self.error_response = Some(resp);
+                        let resp = self.error_response.as_ref().unwrap();
 
                         let mut output = vec![];
                         write_response(&mut output, &resp)?;
+
                         if let Some(body) = resp.body() {
                             output.extend_from_slice(body.as_bytes());
                         }
+
                         ProcessingResult::Continue(HandshakeMachine::start_write(stream, output))
                     }
                 }
             }
 
             StageResult::DoneWriting(stream) => {
-                if let Some(err) = self.error_code.take() {
+                if let Some(err) = self.error_response.take() {
                     debug!("Server handshake failed.");
-                    return Err(Error::Http(StatusCode::from_u16(err)?));
+                    return Err(Error::Http(err));
                 } else {
                     debug!("Server handshake done.");
-                    let websocket = WebSocket::from_raw_socket(
-                        stream,
-                        Role::Server,
-                        self.config.take().unwrap(),
-                    );
+                    let websocket = WebSocket::from_raw_socket(stream, Role::Server, self.config);
                     ProcessingResult::Done(websocket)
                 }
             }
@@ -319,9 +281,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::super::machine::TryParse;
-    use super::create_response;
-    use super::Request;
+    use super::{super::machine::TryParse, create_response, Request};
 
     #[test]
     fn request_parsing() {

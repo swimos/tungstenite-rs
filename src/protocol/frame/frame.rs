@@ -1,14 +1,18 @@
 use byteorder::{ByteOrder, NetworkEndian, ReadBytesExt, WriteBytesExt};
 use log::*;
-use std::borrow::Cow;
-use std::default::Default;
-use std::fmt;
-use std::io::{Cursor, ErrorKind, Read, Write};
-use std::result::Result as StdResult;
-use std::string::{FromUtf8Error, String};
+use std::{
+    borrow::Cow,
+    default::Default,
+    fmt,
+    io::{Cursor, ErrorKind, Read, Write},
+    result::Result as StdResult,
+    string::{FromUtf8Error, String},
+};
 
-use super::coding::{CloseCode, Control, Data, OpCode};
-use super::mask::{apply_mask, generate_mask};
+use super::{
+    coding::{CloseCode, Control, Data, OpCode},
+    mask::{apply_mask, generate_mask},
+};
 use crate::error::{Error, Result};
 
 /// A struct representing the close command.
@@ -23,10 +27,7 @@ pub struct CloseFrame<'t> {
 impl<'t> CloseFrame<'t> {
     /// Convert into a owned string.
     pub fn into_owned(self) -> CloseFrame<'static> {
-        CloseFrame {
-            code: self.code,
-            reason: self.reason.into_owned().into(),
-        }
+        CloseFrame { code: self.code, reason: self.reason.into_owned().into() }
     }
 }
 
@@ -42,25 +43,37 @@ impl<'t> fmt::Display for CloseFrame<'t> {
 pub struct FrameHeader {
     /// Indicates that the frame is the last one of a possibly fragmented message.
     pub is_final: bool,
-    /// Reserved for protocol extensions.
-    pub rsv1: bool,
-    /// Reserved for protocol extensions.
-    pub rsv2: bool,
-    /// Reserved for protocol extensions.
-    pub rsv3: bool,
+    /// Reserved extension headers/bits.
+    pub ext_headers: ExtensionHeaders,
     /// WebSocket protocol opcode.
     pub opcode: OpCode,
     /// A frame mask, if any.
     pub mask: Option<[u8; 4]>,
 }
 
+/// A struct representing reserved extension headers from a WebSocket frame.
+#[allow(missing_copy_implementations)]
+#[derive(Debug, Clone)]
+pub struct ExtensionHeaders {
+    /// Reserved for protocol extensions.
+    pub rsv1: bool,
+    /// Reserved for protocol extensions.
+    pub rsv2: bool,
+    /// Reserved for protocol extensions.
+    pub rsv3: bool,
+}
+
+impl Default for ExtensionHeaders {
+    fn default() -> Self {
+        ExtensionHeaders { rsv1: false, rsv2: false, rsv3: false }
+    }
+}
+
 impl Default for FrameHeader {
     fn default() -> Self {
         FrameHeader {
             is_final: true,
-            rsv1: false,
-            rsv2: false,
-            rsv3: false,
+            ext_headers: Default::default(),
             opcode: OpCode::Control(Control::Close),
             mask: None,
         }
@@ -93,9 +106,9 @@ impl FrameHeader {
 
         let one = {
             code | if self.is_final { 0x80 } else { 0 }
-                | if self.rsv1 { 0x40 } else { 0 }
-                | if self.rsv2 { 0x20 } else { 0 }
-                | if self.rsv3 { 0x10 } else { 0 }
+                | if self.ext_headers.rsv1 { 0x40 } else { 0 }
+                | if self.ext_headers.rsv2 { 0x20 } else { 0 }
+                | if self.ext_headers.rsv3 { 0x10 } else { 0 }
         };
 
         let lenfmt = LengthFormat::for_length(length);
@@ -192,14 +205,8 @@ impl FrameHeader {
             _ => (),
         }
 
-        let hdr = FrameHeader {
-            is_final,
-            rsv1,
-            rsv2,
-            rsv3,
-            opcode,
-            mask,
-        };
+        let ext_headers = ExtensionHeaders { rsv1, rsv2, rsv3 };
+        let hdr = FrameHeader { is_final, ext_headers, opcode, mask };
 
         Ok(Some((hdr, length)))
     }
@@ -298,10 +305,7 @@ impl Frame {
                 let code = NetworkEndian::read_u16(&data[0..2]).into();
                 data.drain(0..2);
                 let text = String::from_utf8(data)?;
-                Ok(Some(CloseFrame {
-                    code,
-                    reason: text.into(),
-                }))
+                Ok(Some(CloseFrame { code, reason: text.into() }))
             }
         }
     }
@@ -309,22 +313,9 @@ impl Frame {
     /// Create a new data frame.
     #[inline]
     pub fn message(data: Vec<u8>, opcode: OpCode, is_final: bool) -> Frame {
-        debug_assert!(
-            match opcode {
-                OpCode::Data(_) => true,
-                _ => false,
-            },
-            "Invalid opcode for data frame."
-        );
+        debug_assert!(matches!(opcode, OpCode::Data(_)), "Invalid opcode for data frame.");
 
-        Frame {
-            header: FrameHeader {
-                is_final,
-                opcode,
-                ..FrameHeader::default()
-            },
-            payload: data,
-        }
+        Frame { header: FrameHeader { is_final, opcode, ..FrameHeader::default() }, payload: data }
     }
 
     /// Create a new Pong control frame.
@@ -363,10 +354,7 @@ impl Frame {
             Vec::new()
         };
 
-        Frame {
-            header: FrameHeader::default(),
-            payload,
-        }
+        Frame { header: FrameHeader::default(), payload }
     }
 
     /// Create a frame from given header and data.
@@ -380,6 +368,12 @@ impl Frame {
         self.apply_mask();
         output.write_all(self.payload())?;
         Ok(())
+    }
+
+    /// Splits the frame into a tuple of its header and payload.
+    pub fn split(self) -> (FrameHeader, Vec<u8>) {
+        let Frame { header, payload } = self;
+        (header, payload)
     }
 }
 
@@ -397,17 +391,14 @@ payload length: {}
 payload: 0x{}
             ",
             self.header.is_final,
-            self.header.rsv1,
-            self.header.rsv2,
-            self.header.rsv3,
+            self.header.ext_headers.rsv1,
+            self.header.ext_headers.rsv2,
+            self.header.ext_headers.rsv3,
             self.header.opcode,
             // self.mask.map(|mask| format!("{:?}", mask)).unwrap_or("NONE".into()),
             self.len(),
             self.payload.len(),
-            self.payload
-                .iter()
-                .map(|byte| format!("{:x}", byte))
-                .collect::<String>()
+            self.payload.iter().map(|byte| format!("{:x}", byte)).collect::<String>()
         )
     }
 }
@@ -479,10 +470,7 @@ mod tests {
         let mut payload = Vec::new();
         raw.read_to_end(&mut payload).unwrap();
         let frame = Frame::from_payload(header, payload);
-        assert_eq!(
-            frame.into_data(),
-            vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]
-        );
+        assert_eq!(frame.into_data(), vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]);
     }
 
     #[test]
