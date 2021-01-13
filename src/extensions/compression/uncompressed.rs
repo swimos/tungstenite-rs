@@ -1,9 +1,12 @@
-use crate::extensions::WebSocketExtension;
-use crate::protocol::frame::coding::Data;
-use crate::protocol::frame::ExtensionHeaders;
-use crate::protocol::message::{IncompleteMessage, IncompleteMessageType};
-use crate::protocol::MAX_MESSAGE_SIZE;
-use crate::{Error, Message};
+use crate::{
+    extensions::WebSocketExtension,
+    protocol::{
+        frame::{coding::Data, ExtensionHeaders},
+        message::{IncompleteMessage, IncompleteMessageType},
+        MAX_MESSAGE_SIZE,
+    },
+    Error, Message,
+};
 
 /// An uncompressed message handler for a WebSocket.
 #[derive(Debug)]
@@ -14,10 +17,7 @@ pub struct UncompressedExt {
 
 impl Default for UncompressedExt {
     fn default() -> Self {
-        UncompressedExt {
-            incomplete: None,
-            max_message_size: Some(MAX_MESSAGE_SIZE),
-        }
+        UncompressedExt { incomplete: None, max_message_size: Some(MAX_MESSAGE_SIZE) }
     }
 }
 
@@ -25,10 +25,7 @@ impl UncompressedExt {
     /// Builds a new `UncompressedExt` that will permit a maximum message size of `max_message_size`
     /// or will be unbounded if `None`.
     pub fn new(max_message_size: Option<usize>) -> UncompressedExt {
-        UncompressedExt {
-            incomplete: None,
-            max_message_size,
-        }
+        UncompressedExt { incomplete: None, max_message_size }
     }
 }
 
@@ -53,9 +50,7 @@ impl WebSocketExtension for UncompressedExt {
                 if let Some(ref mut msg) = self.incomplete {
                     msg.extend(payload, self.max_message_size)?;
                 } else {
-                    return Err(Error::Protocol(
-                        "Continue frame but nothing to continue".into(),
-                    ));
+                    return Err(Error::Protocol("Continue frame but nothing to continue".into()));
                 }
                 if fin {
                     Ok(Some(self.incomplete.take().unwrap().complete()?))
@@ -84,9 +79,9 @@ impl WebSocketExtension for UncompressedExt {
                     Ok(None)
                 }
             }
-            Data::Reserved(i) => Err(Error::Protocol(
-                format!("Unknown data frame type {}", i).into(),
-            )),
+            Data::Reserved(i) => {
+                Err(Error::Protocol(format!("Unknown data frame type {}", i).into()))
+            }
         }
     }
 }

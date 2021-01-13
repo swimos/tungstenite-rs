@@ -5,16 +5,20 @@ mod tests;
 
 #[cfg(feature = "deflate")]
 use crate::extensions::compression::deflate::{DeflateConfig, DeflateExt};
-use crate::extensions::compression::uncompressed::UncompressedExt;
-use crate::extensions::WebSocketExtension;
-use crate::protocol::frame::coding::Data;
-use crate::protocol::frame::{ExtensionHeaders, Frame};
-use crate::protocol::{Role, WebSocketConfig};
-use crate::Message;
+use crate::{
+    extensions::{compression::uncompressed::UncompressedExt, WebSocketExtension},
+    protocol::{
+        frame::{coding::Data, ExtensionHeaders, Frame},
+        Role, WebSocketConfig,
+    },
+    Message,
+};
 use http::{Request, Response};
-use std::borrow::Cow;
-use std::error::Error;
-use std::fmt::{Display, Formatter};
+use std::{
+    borrow::Cow,
+    error::Error,
+    fmt::{Display, Formatter},
+};
 
 /// A permessage-deflate WebSocket extension (RFC 7692).
 #[cfg(feature = "deflate")]
@@ -82,9 +86,7 @@ impl From<CompressionError> for crate::Error {
 
 impl Display for CompressionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CompressionError")
-            .field("error", &self.0)
-            .finish()
+        f.debug_struct("CompressionError").field("error", &self.0).finish()
     }
 }
 

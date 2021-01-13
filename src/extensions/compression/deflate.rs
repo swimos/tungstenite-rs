@@ -2,23 +2,28 @@
 
 use std::fmt::{Display, Formatter};
 
-use crate::extensions::compression::uncompressed::UncompressedExt;
-use crate::extensions::WebSocketExtension;
-use crate::protocol::frame::coding::{Data, OpCode};
-use crate::protocol::frame::{ExtensionHeaders, Frame};
-use crate::protocol::message::{IncompleteMessage, IncompleteMessageType};
-use crate::protocol::MAX_MESSAGE_SIZE;
-use crate::Message;
+use crate::{
+    extensions::{compression::uncompressed::UncompressedExt, WebSocketExtension},
+    protocol::{
+        frame::{
+            coding::{Data, OpCode},
+            ExtensionHeaders, Frame,
+        },
+        message::{IncompleteMessage, IncompleteMessageType},
+        MAX_MESSAGE_SIZE,
+    },
+    Message,
+};
 use bytes::BufMut;
 use flate2::{
     Compress, CompressError, Compression, Decompress, DecompressError, FlushCompress,
     FlushDecompress, Status,
 };
-use http::header::{InvalidHeaderValue, SEC_WEBSOCKET_EXTENSIONS};
-use http::{HeaderValue, Request, Response};
-use std::borrow::Cow;
-use std::mem::replace;
-use std::slice;
+use http::{
+    header::{InvalidHeaderValue, SEC_WEBSOCKET_EXTENSIONS},
+    HeaderValue, Request, Response,
+};
+use std::{borrow::Cow, mem::replace, slice};
 
 /// The WebSocket Extension Identifier as per the IANA registry.
 const EXT_IDENT: &str = "permessage-deflate";
@@ -62,10 +67,7 @@ impl DeflateConfig {
     /// Builds a new `DeflateConfig` using the `compression_level` and the defaults for all other
     /// members.
     pub fn with_compression_level(compression_level: Compression) -> DeflateConfig {
-        DeflateConfig {
-            compression_level,
-            ..Default::default()
-        }
+        DeflateConfig { compression_level, ..Default::default() }
     }
 
     /// Returns the maximum message size permitted.
@@ -498,10 +500,9 @@ pub fn on_make_request<T>(mut request: Request<T>, config: &DeflateConfig) -> Re
         header_value.push_str("; server_no_context_takeover")
     }
 
-    request.headers_mut().append(
-        SEC_WEBSOCKET_EXTENSIONS,
-        HeaderValue::from_str(&header_value).unwrap(),
-    );
+    request
+        .headers_mut()
+        .append(SEC_WEBSOCKET_EXTENSIONS, HeaderValue::from_str(&header_value).unwrap());
 
     request
 }
@@ -613,10 +614,8 @@ fn validate_req_extensions(
 
     if !response_str.contains("server_max_window_bits") {
         response_str.push_str("; ");
-        response_str.push_str(&format!(
-            "server_max_window_bits={}",
-            config.server_max_window_bits()
-        ))
+        response_str
+            .push_str(&format!("server_max_window_bits={}", config.server_max_window_bits()))
     }
 
     if !response_str.contains("client_max_window_bits")
@@ -762,8 +761,7 @@ impl WebSocketExtension for DeflateExt {
                 Ok(Some(msg.complete()?))
             }
         } else {
-            self.uncompressed_extension
-                .on_receive_frame(data_opcode, is_final, header, payload)
+            self.uncompressed_extension.on_receive_frame(data_opcode, is_final, header, payload)
         }
     }
 }
@@ -792,9 +790,7 @@ impl Deflator {
             window_size = 9;
         }
 
-        Deflator {
-            compress: Compress::new_with_window_bits(compression, false, window_size),
-        }
+        Deflator { compress: Compress::new_with_window_bits(compression, false, window_size) }
     }
 
     fn reset(&mut self) {
@@ -822,9 +818,7 @@ impl Deflator {
                 )
             };
 
-            let status = self
-                .compress
-                .compress(&read_buff, out_slice, FlushCompress::Sync)?;
+            let status = self.compress.compress(&read_buff, out_slice, FlushCompress::Sync)?;
 
             let consumed = (self.compress.total_in() - before_in) as usize;
             read_buff = read_buff.split_off(consumed);
@@ -857,9 +851,7 @@ impl Inflator {
             window_size = 9;
         }
 
-        Inflator {
-            decompress: Decompress::new_with_window_bits(false, window_size),
-        }
+        Inflator { decompress: Decompress::new_with_window_bits(false, window_size) }
     }
 
     fn reset(&mut self, zlib_header: bool) {
@@ -888,8 +880,7 @@ impl Inflator {
             };
 
             let status =
-                self.decompress
-                    .decompress(&read_buff, out_slice, FlushDecompress::Sync)?;
+                self.decompress.decompress(&read_buff, out_slice, FlushDecompress::Sync)?;
 
             let consumed = (self.decompress.total_in() - before_in) as usize;
             read_buff = read_buff.split_off(consumed);
@@ -924,21 +915,13 @@ struct FragmentBuffer {
 impl FragmentBuffer {
     /// Creates a new fragment buffer that will permit a maximum length of `max_len`.
     fn new(max_len: Option<usize>) -> FragmentBuffer {
-        FragmentBuffer {
-            frame_opcode: None,
-            fragments: Vec::new(),
-            max_len,
-        }
+        FragmentBuffer { frame_opcode: None, fragments: Vec::new(), max_len }
     }
 
     /// Attempts to push a frame into the buffer. This will fail if the new length of the buffer's
     /// frames exceeds the maximum capacity of `max_len`.
     fn try_push(&mut self, opcode: Data, payload: Vec<u8>) -> Result<(), DeflateExtensionError> {
-        let FragmentBuffer {
-            fragments,
-            max_len,
-            frame_opcode,
-        } = self;
+        let FragmentBuffer { fragments, max_len, frame_opcode } = self;
 
         if fragments.is_empty() {
             let ty = match opcode {
@@ -992,11 +975,6 @@ impl FragmentBuffer {
     /// Drains the buffer. Returning the message's opcode and its payload.
     fn reset(&mut self) -> (IncompleteMessageType, Vec<u8>) {
         let payloads = replace(&mut self.fragments, Vec::new());
-        (
-            self.frame_opcode
-                .take()
-                .expect("Inconsistent state: missing opcode"),
-            payloads,
-        )
+        (self.frame_opcode.take().expect("Inconsistent state: missing opcode"), payloads)
     }
 }

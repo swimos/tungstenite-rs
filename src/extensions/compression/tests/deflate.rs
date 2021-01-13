@@ -1,8 +1,7 @@
 use crate::extensions::compression::deflate::{
     on_receive_request, DeflateConfigBuilder, DeflateExtensionError,
 };
-use http::header::SEC_WEBSOCKET_EXTENSIONS;
-use http::{HeaderValue, Request, Response};
+use http::{header::SEC_WEBSOCKET_EXTENSIONS, HeaderValue, Request, Response};
 
 mod server {
     use super::*;
@@ -11,9 +10,7 @@ mod server {
     fn config_unchanged_on_err() {
         let s = "permessage-deflate; client_no_context_takeover; client_max_window_bits; server_no_context_takeover; server_max_window_bits=\"80000\"";
         let mut request = Request::new(());
-        request
-            .headers_mut()
-            .insert(SEC_WEBSOCKET_EXTENSIONS, HeaderValue::from_static(s));
+        request.headers_mut().insert(SEC_WEBSOCKET_EXTENSIONS, HeaderValue::from_static(s));
 
         let mut response = Response::new(());
         let initial_config = DeflateConfigBuilder::default()
@@ -33,9 +30,7 @@ mod server {
     fn missing_client_window_size() {
         let s = "permessage-deflate; client_max_window_bits";
         let mut request = Request::new(());
-        request
-            .headers_mut()
-            .insert(SEC_WEBSOCKET_EXTENSIONS, HeaderValue::from_static(s));
+        request.headers_mut().insert(SEC_WEBSOCKET_EXTENSIONS, HeaderValue::from_static(s));
 
         let mut response = Response::new(());
         let mut initial_config = DeflateConfigBuilder::default()
@@ -63,9 +58,7 @@ mod server {
     fn missing_server_window_size() {
         let s = "permessage-deflate; server_max_window_bits";
         let mut request = Request::new(());
-        request
-            .headers_mut()
-            .insert(SEC_WEBSOCKET_EXTENSIONS, HeaderValue::from_static(s));
+        request.headers_mut().insert(SEC_WEBSOCKET_EXTENSIONS, HeaderValue::from_static(s));
 
         let mut response = Response::new(());
         let initial_config = DeflateConfigBuilder::default()
@@ -85,9 +78,7 @@ mod server {
     fn config_unchanged_on_mismatch() {
         let s = "permessage-deflate; unknown_parameter=\"invalid\"; client_no_context_takeover; server_no_context_takeover";
         let mut request = Request::new(());
-        request
-            .headers_mut()
-            .insert(SEC_WEBSOCKET_EXTENSIONS, HeaderValue::from_static(s));
+        request.headers_mut().insert(SEC_WEBSOCKET_EXTENSIONS, HeaderValue::from_static(s));
 
         let mut response = Response::new(());
         let initial_config = DeflateConfigBuilder::default()
@@ -112,9 +103,7 @@ mod server {
     fn parses_named_parameters() {
         let s = "permessage-deflate; client_no_context_takeover; client_max_window_bits; server_no_context_takeover; server_max_window_bits=\"8\"";
         let mut request = Request::new(());
-        request
-            .headers_mut()
-            .insert(SEC_WEBSOCKET_EXTENSIONS, HeaderValue::from_static(s));
+        request.headers_mut().insert(SEC_WEBSOCKET_EXTENSIONS, HeaderValue::from_static(s));
 
         let mut response = Response::new(());
         let mut parsed_config = DeflateConfigBuilder::default()
@@ -150,9 +139,7 @@ mod server {
     fn splits() {
         let s = "not-permessage-deflate; client_no_context_takeover; client_max_window_bits; server_no_context_takeover; server_max_window_bits=8, no-permessage-deflate; client_no_context_takeover; client_max_window_bits; server_no_context_takeover, permessage-deflate; client_no_context_takeover; client_max_window_bits";
         let mut request = Request::new(());
-        request
-            .headers_mut()
-            .insert(SEC_WEBSOCKET_EXTENSIONS, HeaderValue::from_static(s));
+        request.headers_mut().insert(SEC_WEBSOCKET_EXTENSIONS, HeaderValue::from_static(s));
 
         let mut response = Response::new(());
         let mut parsed_config = DeflateConfigBuilder::default()
@@ -186,9 +173,7 @@ mod server {
     fn splits_on_new_line() {
         let s = "not-permessage-deflate; client_no_context_takeover; client_max_window_bits; server_no_context_takeover; server_max_window_bits=8,\\n\\r\\t \\ no-permessage-deflate; client_no_context_takeover; client_max_window_bits; server_no_context_takeover, permessage-deflate; client_no_context_takeover; client_max_window_bits";
         let mut request = Request::new(());
-        request
-            .headers_mut()
-            .insert(SEC_WEBSOCKET_EXTENSIONS, HeaderValue::from_static(s));
+        request.headers_mut().insert(SEC_WEBSOCKET_EXTENSIONS, HeaderValue::from_static(s));
 
         let mut response = Response::new(());
         let mut parsed_config = DeflateConfigBuilder::default()
@@ -228,9 +213,7 @@ mod client {
         let s = "permessage-deflate; client_no_context_takeover; client_max_window_bits=8; server_max_window_bits=10";
 
         let mut response = Response::new(());
-        response
-            .headers_mut()
-            .insert(SEC_WEBSOCKET_EXTENSIONS, HeaderValue::from_static(s));
+        response.headers_mut().insert(SEC_WEBSOCKET_EXTENSIONS, HeaderValue::from_static(s));
 
         let mut parsed_config = DeflateConfigBuilder::default()
             .server_max_window_bits(10)
@@ -254,9 +237,7 @@ mod client {
     fn parses_named_parameters() {
         let s = "permessage-deflate; client_no_context_takeover; client_max_window_bits; server_no_context_takeover; server_max_window_bits=\"8\"";
         let mut request = Request::new(());
-        request
-            .headers_mut()
-            .insert(SEC_WEBSOCKET_EXTENSIONS, HeaderValue::from_static(s));
+        request.headers_mut().insert(SEC_WEBSOCKET_EXTENSIONS, HeaderValue::from_static(s));
 
         let mut response = Response::new(());
         let mut parsed_config = DeflateConfigBuilder::default()

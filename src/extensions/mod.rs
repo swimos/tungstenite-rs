@@ -2,9 +2,10 @@
 
 pub mod compression;
 
-use crate::protocol::frame::coding::Data;
-use crate::protocol::frame::{ExtensionHeaders, Frame};
-use crate::Message;
+use crate::{
+    protocol::frame::{coding::Data, ExtensionHeaders, Frame},
+    Message,
+};
 
 /// A trait for defining WebSocket extensions for both WebSocket clients and servers. Extensions
 /// may be stacked by nesting them inside one another.

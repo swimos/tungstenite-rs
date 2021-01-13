@@ -1,5 +1,6 @@
 use std::{net::TcpListener, thread::spawn};
 use tungstenite::{
+    extensions::compression::WsCompression,
     handshake::server::{Request, Response},
     protocol::WebSocketConfig,
     server::accept_hdr_with_config,
@@ -35,6 +36,7 @@ fn main() {
                 // rare cases where it is necessary to integrate with existing/legacy
                 // clients which are sending unmasked frames
                 accept_unmasked_frames: true,
+                compression: WsCompression::None(None),
             });
 
             let mut websocket = accept_hdr_with_config(stream.unwrap(), callback, config).unwrap();

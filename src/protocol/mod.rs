@@ -22,8 +22,10 @@ use self::{
 };
 use crate::{
     error::{Error, Result},
-    extensions::compression::{CompressionSwitcher, WsCompression},
-    extensions::WebSocketExtension,
+    extensions::{
+        compression::{CompressionSwitcher, WsCompression},
+        WebSocketExtension,
+    },
     util::NonBlockingResult,
 };
 

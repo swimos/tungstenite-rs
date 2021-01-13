@@ -15,9 +15,9 @@ use super::{
     machine::{HandshakeMachine, StageResult, TryParse},
     HandshakeRole, MidHandshake, ProcessingResult,
 };
-use crate::extensions::compression::{apply_compression_headers, verify_compression_resp_headers};
 use crate::{
     error::{Error, Result},
+    extensions::compression::{apply_compression_headers, verify_compression_resp_headers},
     protocol::{Role, WebSocket, WebSocketConfig},
 };
 
